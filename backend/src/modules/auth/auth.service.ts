@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt'
 import { InjectRepository } from '@nestjs/typeorm'
 import { User } from '../users/entities/user.entity'
 import { Repository } from 'typeorm'
+import { AuthPayload } from './interfaces/auth.interfaces'
 
 @Injectable()
 export class AuthService {
@@ -37,8 +38,8 @@ export class AuthService {
     })
     user = await this.userRepository.save(userEntity)
 
-    const { password, ...userPublic } = user
-    return userPublic
+    const { password, ...userPublicData } = user
+    return { user: userPublicData }
   }
 
   async signIn(signInDto: SignInDto) {
@@ -53,12 +54,13 @@ export class AuthService {
     ) {
       throw new UnauthorizedException('Invalid credentials')
     }
-    const payload = { id: user.id, email: user.email, role: user.role }
+    const payload: AuthPayload = { ...user }
+    const { password, ...userPublicData } = user
     return {
       token: await this.jwtService.signAsync(payload, {
         expiresIn: this.configService.get<number>('JWT_TOKEN_EXPIRES_IN'),
       }),
-      user,
+      user: userPublicData,
     }
   }
 }

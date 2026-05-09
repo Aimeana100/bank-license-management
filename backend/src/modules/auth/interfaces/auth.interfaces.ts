@@ -4,7 +4,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export interface AuthPayload {
-  id: number
+  id: string
   email: string
   role: string
 }
