@@ -1,7 +1,45 @@
-import { Column, Entity, ManyToOne, PrimaryColumn } from 'typeorm'
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  ManyToOne,
+  JoinColumn,
+  PrimaryColumn,
+} from 'typeorm'
 import { Application } from './applications.entity'
-import { User } from '../../users/entities/user.entity'
-import { DocumentUploadCategory } from './documents-categories.entity'
+
+export enum DocumentCategory {
+  ARTICLES_OF_INCORPORATION = 'ARTICLES_OF_INCORPORATION',
+  CERTIFICATE_OF_REGISTRATION = 'CERTIFICATE_OF_REGISTRATION',
+  FINANCIAL_STATEMENTS = 'FINANCIAL_STATEMENTS',
+  PROOF_OF_CAPITAL = 'PROOF_OF_CAPITAL',
+}
+
+export type SeedDocumentCategory = {
+  code: DocumentCategory
+  name: string
+}
+
+// This entity represents a document uploaded for an application.
+// Each document belongs to a specific category (type of document required ) and is associated with one application.
+export const seedDocumentCategories: SeedDocumentCategory[] = [
+  {
+    code: DocumentCategory.ARTICLES_OF_INCORPORATION,
+    name: 'Articles of Incorporation',
+  },
+  {
+    code: DocumentCategory.CERTIFICATE_OF_REGISTRATION,
+    name: 'Certificate of Registration',
+  },
+  {
+    code: DocumentCategory.FINANCIAL_STATEMENTS,
+    name: 'Financial Statements',
+  },
+  {
+    code: DocumentCategory.PROOF_OF_CAPITAL,
+    name: 'Proof of Capital',
+  },
+]
 
 @Entity()
 export class DocumentUpload {
@@ -23,14 +61,16 @@ export class DocumentUpload {
   @Column()
   size: number
 
-  @ManyToOne(() => Application, (application) => application.id)
+  @Column({
+    type: 'enum',
+    enum: DocumentCategory,
+  })
+  documentCategory: DocumentCategory
+
+  @ManyToOne(() => Application, (application) => application.documents)
+  @JoinColumn()
   application: Application
 
-  @ManyToOne(() => User, (user) => user.id)
-  uploadedBy: User
-
-  @ManyToOne(() => DocumentUploadCategory, (category) => category.id)
-  documentCategory: DocumentUploadCategory
-
+  @CreateDateColumn()
   createdAt: Date
 }

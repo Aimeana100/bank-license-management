@@ -13,7 +13,6 @@ import { JwtService } from '@nestjs/jwt'
 import { InjectRepository } from '@nestjs/typeorm'
 import { User } from '../users/entities/user.entity'
 import { Repository } from 'typeorm'
-import { AuthPayload } from './interfaces/auth.interfaces'
 
 @Injectable()
 export class AuthService {
@@ -54,7 +53,7 @@ export class AuthService {
     ) {
       throw new UnauthorizedException('Invalid credentials')
     }
-    const payload = { id: user.id, role: user.role } as AuthPayload
+    const payload = { id: user.id, role: user.role }
     const { password, ...userPublicData } = user
     return {
       token: await this.jwtService.signAsync(payload, {

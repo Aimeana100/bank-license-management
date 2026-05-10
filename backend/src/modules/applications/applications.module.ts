@@ -5,9 +5,10 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { Application } from './entities/applications.entity'
 import { User } from '../users/entities/user.entity'
 import { JwtService } from '@nestjs/jwt'
+import { DocumentUpload } from './entities/documents-upload.entity'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Application, User])],
+  imports: [TypeOrmModule.forFeature([Application, User, DocumentUpload])],
   controllers: [ApplicationsController],
   providers: [ApplicationsService, JwtService],
   exports: [ApplicationsService],

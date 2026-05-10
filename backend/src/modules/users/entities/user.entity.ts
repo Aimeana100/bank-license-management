@@ -1,3 +1,4 @@
+import { Application } from '../../applications/entities/applications.entity'
 import { Exclude } from 'class-transformer'
 import {
   Column,
@@ -7,7 +8,6 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm'
-import { Application } from '../../applications/entities/applications.entity'
 
 export enum Role {
   APPLICANT = 'APPLICANT',

@@ -7,8 +7,10 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
+  OneToMany,
 } from 'typeorm'
 import { User } from '../../users/entities/user.entity'
+import { DocumentUpload } from './documents-upload.entity'
 
 export enum InstitutionType {
   COMMERCIAL_BANK = 'COMMERCIAL_BANK',
@@ -63,6 +65,9 @@ export class Application {
     default: ApplicationStatus.DRAFT,
   })
   applicationStatus: ApplicationStatus
+
+  @OneToMany(() => DocumentUpload, (document) => document.application)
+  documents: DocumentUpload[]
 
   //    User who created the application
   @ManyToOne(() => User, (user) => user.submittedApplications, {

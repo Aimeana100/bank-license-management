@@ -29,6 +29,8 @@ services:
         condition: service_healthy
     ports:
       - "${PORT}:${PORT}"
+    volumes:
+      - ./uploads:/app/uploads
     env_file:
       - .env
     environment:

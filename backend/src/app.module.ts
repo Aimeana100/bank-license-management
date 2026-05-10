@@ -8,7 +8,7 @@ import { typeOrmConfigAsync } from './config/typeorm'
 import { AuthModule } from './modules/auth/auth.module'
 import { ApplicationsModule } from './modules/applications/applications.module'
 import { SeedersModule } from './seeders/seeders.module'
-import { DocumentsService } from './modules/applications/documents/documents.service'
+import { DocumentsService } from './modules/applications/documents.service'
 
 @Module({
   imports: [

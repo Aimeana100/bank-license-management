@@ -3,9 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { User, Role } from '../modules/users/entities/user.entity'
 import { Application } from '../modules/applications/entities/applications.entity'
-import { DocumentUploadCategory } from '../modules/applications/entities/documents-categories.entity'
 import { seedDefaultUsers } from './scripts/seed-users.script'
-import { seedDefaultDocumentCategories } from './scripts/seed-document-categories.script'
 import { seedDefaultApplicationsForApplicant } from './scripts/seed-applications.script'
 
 @Injectable()
@@ -15,8 +13,6 @@ export class StartupSeederService implements OnApplicationBootstrap {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    @InjectRepository(DocumentUploadCategory)
-    private readonly categoryRepository: Repository<DocumentUploadCategory>,
     @InjectRepository(Application)
     private readonly applicationRepository: Repository<Application>,
   ) {}
@@ -32,10 +28,6 @@ export class StartupSeederService implements OnApplicationBootstrap {
 
     const usersByRole = await seedDefaultUsers({
       userRepository: this.userRepository,
-      logger: this.logger,
-    })
-    await seedDefaultDocumentCategories({
-      categoryRepository: this.categoryRepository,
       logger: this.logger,
     })
 
