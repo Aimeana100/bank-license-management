@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -7,7 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { CreateApplicationDto } from './dto/create-application.dto'
-import { Application } from './entities/applications.entity'
+import { Application, ApplicationStatus } from './entities/applications.entity'
 import { REQUEST } from '@nestjs/core/router/request/request-constants'
 import { AuthenticatedRequest } from '../auth/interfaces/auth.interfaces'
 import { Role, User } from '../users/entities/user.entity'
@@ -15,9 +16,10 @@ import {
   DocumentCategory,
   DocumentUpload,
 } from './entities/documents-upload.entity'
-import { randomUUID } from 'crypto'
+import { randomUUID, UUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import * as path from 'path'
+import { applicationStatusCanTransition } from './utils/application-state-machine'
 
 @Injectable()
 export class ApplicationsService {
@@ -30,6 +32,11 @@ export class ApplicationsService {
     private readonly documentUploadRepository: Repository<DocumentUpload>,
   ) {}
 
+  /**
+   * Creates a new application
+   * @param createApplicationDto
+   * @returns The created application
+   */
   async create(
     createApplicationDto: CreateApplicationDto,
   ): Promise<Application> {
@@ -43,6 +50,11 @@ export class ApplicationsService {
     return this.applicationRepository.save(application)
   }
 
+  /**
+   * Retrieves all applications
+   * For applicants, only their own applications are returned. For reviewers and approvers, all applications are returned.
+   * @returns
+   */
   async findAll() {
     const queryBuilder = this.applicationRepository
       .createQueryBuilder('application')
@@ -70,6 +82,48 @@ export class ApplicationsService {
     }
   }
 
+  /**
+   * Changes the status of an application, ensuring that the transition is valid according to the defined state machine
+   * @param applicationId - ID of the application to update
+   * @param newStatus - The new status to set for the application
+   * @returns The updated application with the new status
+   * @throws NotFoundException if the application does not exist
+   * @throws ForbiddenException if the status transition is not allowed
+   */
+  async changeApplicationStatus(
+    applicationId: UUID,
+    newStatus: ApplicationStatus,
+  ) {
+    // Fetch the application from the database
+    const application = await this.applicationRepository.findOne({
+      where: { id: applicationId },
+    })
+
+    if (!application) {
+      throw new NotFoundException('Application not found')
+    }
+
+    // Check if the status transition is valid
+    if (
+      !applicationStatusCanTransition(application.applicationStatus, newStatus)
+    ) {
+      throw new BadRequestException(
+        `Cannot change status from ${application.applicationStatus} to ${newStatus}`,
+      )
+    }
+
+    // Update the application status
+    application.applicationStatus = newStatus
+    return this.applicationRepository.save(application)
+  }
+
+  /*
+   * Handles document attachment upload for an application
+   * @param applicationId - ID of the application to which the document belongs
+   * @param categoryCode - Document category code (e.g. 'BUSINESS_REGISTRATION')
+   * @param file - The uploaded file object from Multer
+   * @returns The created DocumentUpload entity
+   */
   async uploadDocument(
     applicationId: string,
     categoryCode: DocumentCategory,
@@ -127,6 +181,6 @@ export class ApplicationsService {
       application,
     })
 
-    return {data: await this.documentUploadRepository.save(document)} 
+    return { data: await this.documentUploadRepository.save(document) }
   }
 }

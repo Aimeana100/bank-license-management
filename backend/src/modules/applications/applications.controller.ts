@@ -7,13 +7,12 @@ import { CreateApplicationDto } from './dto/create-application.dto'
 import { ApplicationsService } from './applications.service'
 import { DocumentCategory } from './entities/documents-upload.entity'
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
-  UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common'
@@ -23,8 +22,11 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger'
-import { FileUploadDto } from './dto/file-upload.dto'
-
+import { FileUploadDto } from './dto/applciation-file-upload.dto'
+import { UUID } from 'crypto'
+import { ReviewApplicationDto } from './dto/review-application.dto'
+import { ApproveApplicationDto } from './dto/approve-application.dto'
+import { UploadedRequiredFile } from '../../common/decorator/upload-required-file'
 
 @Controller('applications')
 export class ApplicationsController {
@@ -60,29 +62,60 @@ export class ApplicationsController {
 
   @ApiOperation({ summary: 'Upload a document for an application' })
   @ApiResponse({ status: 201, description: 'Document uploaded.' })
-  @ApiResponse({ status: 400, description: 'Bad Request.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  @ApiResponse({ status: 403, description: 'Forbidden.' })
   @ApiConsumes('multipart/form-data')
   @UseGuards(AuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Post('/:id/documents/:categoryCode')
+  @Post('/:applicationId/documents/:categoryCode')
   @Roles(Role.APPLICANT)
   @UseInterceptors(FileInterceptor('document'))
-  async uploadDocument(
-    @Param('id') applicationId: string,
+  async attachDocument(
+    @Param('applicationId') applicationId: string,
     @Param('categoryCode') categoryCode: DocumentCategory,
-    @UploadedFile() document: any,
+    @UploadedRequiredFile() document: string,
     @Body() documentDto: FileUploadDto,
   ) {
-    if (!document) {
-      throw new BadRequestException('File is required')
-    }
-
-    return  await this.applicationsService.uploadDocument(
+    return await this.applicationsService.uploadDocument(
       applicationId,
       categoryCode,
       document,
+    )
+  }
+
+  @ApiResponse({ status: 200, description: 'Application status updated.' })
+  @ApiResponse({ status: 400, description: 'Bad Request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiOperation({ summary: 'Review an application' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Post('/:applicationId/review')
+  @Roles(Role.REVIEWER)
+  review(
+    @Param('applicationId') applicationId: UUID,
+    @Body() reviewApplicationDto: ReviewApplicationDto,
+  ) {
+    return this.applicationsService.changeApplicationStatus(
+      applicationId,
+      reviewApplicationDto.applicationStatus,
+    )
+  }
+
+  @ApiResponse({ status: 200, description: 'Application status updated.' })
+  @ApiResponse({ status: 400, description: 'Bad Request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiOperation({ summary: 'Approve or reject an application' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Post('/:applicationId/approve')
+  @Roles(Role.APPROVER)
+  approve(
+    @Param('applicationId', ParseUUIDPipe) applicationId: UUID,
+    @Body() approveApplicationDto: ApproveApplicationDto,
+  ) {
+    return this.applicationsService.changeApplicationStatus(
+      applicationId,
+      approveApplicationDto.applicationStatus,
     )
   }
 }

@@ -22,7 +22,6 @@ export enum InstitutionType {
 export enum ApplicationStatus {
   DRAFT = 'DRAFT',
   SUBMITTED = 'SUBMITTED',
-  UNDER_REVIEW = 'UNDER_REVIEW',
   INFO_REQUESTED = 'INFO_REQUESTED',
   RESUBMITTED = 'RESUBMITTED',
   REVIEWED = 'REVIEWED',
@@ -65,6 +64,9 @@ export class Application {
     default: ApplicationStatus.DRAFT,
   })
   applicationStatus: ApplicationStatus
+
+  @Column({ default: 1 })
+  version: number
 
   @OneToMany(() => DocumentUpload, (document) => document.application)
   documents: DocumentUpload[]
