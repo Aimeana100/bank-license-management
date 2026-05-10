@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { DataSource, Repository } from 'typeorm'
 import { CreateApplicationDto } from './dto/create-application.dto'
 import { Application, ApplicationStatus } from './entities/applications.entity'
 import { REQUEST } from '@nestjs/core/router/request/request-constants'
@@ -30,6 +30,7 @@ export class ApplicationsService {
     @InjectRepository(User) private readonly userRepository: Repository<User>,
     @InjectRepository(DocumentUpload)
     private readonly documentUploadRepository: Repository<DocumentUpload>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -117,70 +118,97 @@ export class ApplicationsService {
     return this.applicationRepository.save(application)
   }
 
-  /*
-   * Handles document attachment upload for an application
-   * @param applicationId - ID of the application to which the document belongs
-   * @param categoryCode - Document category code (e.g. 'BUSINESS_REGISTRATION')
-   * @param file - The uploaded file object from Multer
-   * @returns The created DocumentUpload entity
+  /**
+   * Uploads and versions a document for an application under a specific category.
+   *
+   * Rules:
+   * - Applicant may only upload documents to their own application
+   * - Uploads are only allowed in permitted workflow states
+   * - New uploads create a new version for the same document category
+   *
+   * @param applicationId Application identifier
+   * @param categoryCode Document category enum
+   * @param file Uploaded multipart file
+   * @returns Persisted document metadata
    */
   async uploadDocument(
     applicationId: string,
     categoryCode: DocumentCategory,
     file: any,
   ) {
-    const application = await this.applicationRepository.findOne({
-      where: { id: applicationId },
-      relations: ['applicant'],
-    })
+    return this.dataSource.transaction(async (manager) => {
+      const application = await manager.findOne(Application, {
+        where: { id: applicationId },
+        relations: ['applicant'],
+        lock: {
+          mode: 'pessimistic_write',
+        },
+      })
 
-    if (!application) {
-      throw new NotFoundException('Application not found')
-    }
+      if (!application) {
+        throw new NotFoundException('Application not found')
+      }
 
-    if (application.applicant.id !== this.request.user.id) {
-      throw new ForbiddenException(
-        'You can only upload documents for your own application',
-      )
-    }
+      if (application.applicant.id !== this.request.user.id) {
+        throw new ForbiddenException(
+          'You can only upload documents for your own application',
+        )
+      }
 
-    const latestDocument = await this.documentUploadRepository.findOne({
-      where: {
-        application: { id: applicationId },
+      const allowedStates = [
+        ApplicationStatus.DRAFT,
+        ApplicationStatus.INFO_REQUESTED,
+      ]
+
+      if (!allowedStates.includes(application.applicationStatus)) {
+        throw new BadRequestException(
+          `Document uploads are not allowed when application is in ${application.applicationStatus} state`,
+        )
+      }
+
+      const latestDocument = await manager.findOne(DocumentUpload, {
+        where: {
+          application: { id: applicationId },
+          documentCategory: categoryCode,
+        },
+        order: {
+          version: 'DESC',
+        },
+      })
+
+      const nextVersion = (latestDocument?.version ?? 0) + 1
+      const safeFilename = file.originalname.replace(/[^\w.-]/g, '_')
+      const relativePath = path
+        .join(
+          'uploads',
+          'applications',
+          application.institutionName.replace(/[^\w.-]/g, '_'),
+          categoryCode,
+          `v${nextVersion}`,
+          safeFilename,
+        )
+        .replace(/\\/g, '/')
+      const fullPath = path.join(process.cwd(), relativePath)
+
+      await mkdir(path.dirname(fullPath), { recursive: true })
+      await writeFile(fullPath, file.buffer)
+
+      const document = manager.create(DocumentUpload, {
+        id: randomUUID(),
+        filename: file.originalname,
+        version: nextVersion,
+        filepath: relativePath,
+        mimetype: file.mimetype,
+        size: file.size,
         documentCategory: categoryCode,
-      },
-      relations: ['application'],
-      order: { version: 'DESC' },
+        application,
+      })
+
+      const savedDocument = await manager.save(document)
+
+      return {
+        data: savedDocument,
+      }
     })
-
-    const nextVersion = (latestDocument?.version ?? 0) + 1
-    const safeFilename = file.originalname.replace(/[^\w.-]/g, '_')
-    const relativePath = path
-      .join(
-        'uploads',
-        'applications',
-        application.institutionName.replace(/[^\w.-]/g, '_'),
-        categoryCode,
-        `v${nextVersion}`,
-        safeFilename,
-      )
-      .replace(/\\/g, '/')
-    const fullPath = path.join(process.cwd(), relativePath)
-
-    await mkdir(path.dirname(fullPath), { recursive: true })
-    await writeFile(fullPath, file.buffer)
-
-    const document = this.documentUploadRepository.create({
-      id: randomUUID(),
-      filename: file.originalname,
-      version: nextVersion,
-      filepath: relativePath,
-      mimetype: file.mimetype,
-      size: file.size,
-      documentCategory: categoryCode,
-      application,
-    })
-
-    return { data: await this.documentUploadRepository.save(document) }
   }
 }

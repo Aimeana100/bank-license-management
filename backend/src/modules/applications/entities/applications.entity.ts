@@ -65,9 +65,6 @@ export class Application {
   })
   applicationStatus: ApplicationStatus
 
-  @Column({ default: 1 })
-  version: number
-
   @OneToMany(() => DocumentUpload, (document) => document.application)
   documents: DocumentUpload[]
 
