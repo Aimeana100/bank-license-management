@@ -9,7 +9,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @ApiOperation({ summary: 'Sign in to the application' })
-  @ApiResponse({ status: 200, description: 'Signed in successfully' })
+  @ApiResponse({ status: 201, description: 'Signed in successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Post('login')
   async signIn(@Body() signInDto: SignInDto) {
@@ -18,7 +18,7 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Sign up as an applicant' })
-  @ApiResponse({ status: 200, description: 'New user created successfully' })
+  @ApiResponse({ status: 201, description: 'New user created successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @Post('register')
   signUp(@Body() signUpdDto: SignUpWithPassWordConfirmationDto) {

@@ -54,7 +54,7 @@ export class AuthService {
     ) {
       throw new UnauthorizedException('Invalid credentials')
     }
-    const payload: AuthPayload = { ...user }
+    const payload = { id: user.id, role: user.role } as AuthPayload
     const { password, ...userPublicData } = user
     return {
       token: await this.jwtService.signAsync(payload, {

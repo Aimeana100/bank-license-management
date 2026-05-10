@@ -3,9 +3,11 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm'
+import { Application } from '../../applications/entities/applications.entity'
 
 export enum Role {
   APPLICANT = 'APPLICANT',
@@ -14,7 +16,7 @@ export enum Role {
   ADMIN = 'ADMIN',
 }
 
-@Entity()
+@Entity({ name: 'users' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string
@@ -38,6 +40,18 @@ export class User {
   @Column()
   @Exclude()
   password: string
+
+  // Applications created by applicant
+  @OneToMany(() => Application, (application) => application.applicant)
+  submittedApplications: Application[]
+
+  // Applications assigned for review
+  @OneToMany(() => Application, (application) => application.reviewer)
+  reviewApplications: Application[]
+
+  // Applications approved/rejected
+  @OneToMany(() => Application, (application) => application.approver)
+  approvedApplications: Application[]
 
   @CreateDateColumn()
   createdAt: Date
