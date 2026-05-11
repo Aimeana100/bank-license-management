@@ -1,6 +1,7 @@
 import api from './axios'
 import type {
   Application,
+  ApplicationDocument,
   CreateApplicationRequest,
   TransitionApplicationRequest,
 } from '../types/application'
@@ -45,6 +46,21 @@ const ROLE_ENDPOINT: Record<string, string> = {
   APPLICANT: 'submit',
   REVIEWER: 'review',
   APPROVER: 'approve',
+}
+
+export async function uploadDocument(
+  applicationId: string,
+  categoryCode: string,
+  file: File,
+): Promise<ApplicationDocument> {
+  const formData = new FormData()
+  formData.append('document', file)
+  const response = await api.patch<ApplicationDocument | ApiResponse<ApplicationDocument>>(
+    `/applications/${applicationId}/documents/${categoryCode}`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return unwrap(response.data)
 }
 
 export async function transitionApplication(

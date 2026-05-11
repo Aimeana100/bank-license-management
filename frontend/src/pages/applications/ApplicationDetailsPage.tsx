@@ -49,6 +49,17 @@ export function ApplicationDetailsPage() {
   const detailsTitle =
     user?.role === 'APPLICANT' ? 'My Application Details' : 'Application Review Details'
 
+  const canUpload =
+    user?.role === 'APPLICANT' &&
+    (application?.applicationStatus === 'DRAFT' ||
+      application?.applicationStatus === 'INFO_REQUESTED')
+
+  const onUploaded = (doc: import('../../types/application').ApplicationDocument) => {
+    setApplication((prev) =>
+      prev ? { ...prev, documents: [...(prev.documents ?? []), doc] } : prev,
+    )
+  }
+
   const onAction = async (action: ApplicationStatus) => {
     if (!application || !user) return
     setError('')
@@ -179,7 +190,12 @@ export function ApplicationDetailsPage() {
                   </div>
                 ) : null}
 
-                <ApplicationDocuments documents={application.documents ?? []} />
+                <ApplicationDocuments
+                  applicationId={application.id}
+                  canUpload={!!canUpload}
+                  documents={application.documents ?? []}
+                  onUploaded={onUploaded}
+                />
               </div>
             ) : null}
           </CardContent>

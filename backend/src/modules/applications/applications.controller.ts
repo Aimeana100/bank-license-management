@@ -80,7 +80,7 @@ export class ApplicationsController {
   @ApiConsumes('multipart/form-data')
   @UseGuards(AuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Post('/:applicationId/documents/:categoryCode')
+  @Patch('/:applicationId/documents/:categoryCode')
   @Roles(Role.APPLICANT)
   @UseInterceptors(FileInterceptor('document'))
   async attachDocument(

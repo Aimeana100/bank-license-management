@@ -187,79 +187,70 @@ export class ApplicationsService {
     categoryCode: DocumentCategory,
     file: any,
   ) {
-    return this.dataSource.transaction(async (manager) => {
-      const application = await manager.findOne(Application, {
-        where: { id: applicationId },
-        relations: ['applicant'],
-        lock: {
-          mode: 'pessimistic_write',
-        },
-      })
-
-      if (!application) {
-        throw new NotFoundException('Application not found')
-      }
-
-      if (application.applicant.id !== this.request.user.id) {
-        throw new ForbiddenException(
-          'You can only upload documents for your own application',
-        )
-      }
-
-      const allowedStates = [
-        ApplicationStatus.DRAFT,
-        ApplicationStatus.INFO_REQUESTED,
-      ]
-
-      if (!allowedStates.includes(application.applicationStatus)) {
-        throw new BadRequestException(
-          `Document uploads are not allowed when application is in ${application.applicationStatus} state`,
-        )
-      }
-
-      const latestDocument = await manager.findOne(DocumentUpload, {
-        where: {
-          application: { id: applicationId },
-          documentCategory: categoryCode,
-        },
-        order: {
-          version: 'DESC',
-        },
-      })
-
-      const nextVersion = (latestDocument?.version ?? 0) + 1
-      const safeFilename = file.originalname.replace(/[^\w.-]/g, '_')
-      const relativePath = path
-        .join(
-          'uploads',
-          'applications',
-          application.institutionName.replace(/[^\w.-]/g, '_'),
-          categoryCode,
-          `v${nextVersion}`,
-          safeFilename,
-        )
-        .replace(/\\/g, '/')
-      const fullPath = path.join(process.cwd(), relativePath)
-
-      await mkdir(path.dirname(fullPath), { recursive: true })
-      await writeFile(fullPath, file.buffer)
-
-      const document = manager.create(DocumentUpload, {
-        id: randomUUID(),
-        filename: file.originalname,
-        version: nextVersion,
-        filepath: relativePath,
-        mimetype: file.mimetype,
-        size: file.size,
-        documentCategory: categoryCode,
-        application,
-      })
-
-      const savedDocument = await manager.save(document)
-
-      return {
-        data: savedDocument,
-      }
+    const application = await this.applicationRepository.findOne({
+      where: { id: applicationId },
+      relations: ['applicant'],
     })
+
+    if (!application) {
+      throw new NotFoundException('Application not found')
+    }
+
+    if (application.applicant.id !== this.request.user.id) {
+      throw new ForbiddenException(
+        'You can only upload documents for your own application',
+      )
+    }
+
+    const allowedStates = [
+      ApplicationStatus.DRAFT,
+      ApplicationStatus.INFO_REQUESTED,
+    ]
+
+    if (!allowedStates.includes(application.applicationStatus)) {
+      throw new BadRequestException(
+        `Document uploads are not allowed when application is in ${application.applicationStatus} state`,
+      )
+    }
+
+    const latestDocument = await this.applicationRepository.manager.findOne(DocumentUpload, {
+      where: {
+        application: { id: applicationId },
+        documentCategory: categoryCode,
+      },
+      order: { version: 'DESC' },
+    })
+
+    const nextVersion = (latestDocument?.version ?? 0) + 1
+    const safeFilename = file.originalname.replace(/[^\w.-]/g, '_')
+    const relativePath = path
+      .join(
+        'uploads',
+        'applications',
+        application.institutionName.replace(/[^\w.-]/g, '_'),
+        categoryCode,
+        `v${nextVersion}`,
+        safeFilename,
+      )
+      .replace(/\\/g, '/')
+    const fullPath = path.join(process.cwd(), relativePath)
+
+    await mkdir(path.dirname(fullPath), { recursive: true })
+    await writeFile(fullPath, file.buffer)
+
+    const document = this.applicationRepository.manager.create(DocumentUpload, {
+      id: randomUUID(),
+      filename: file.originalname,
+      version: nextVersion,
+      filepath: relativePath,
+      mimetype: file.mimetype,
+      size: file.size,
+      documentCategory: categoryCode,
+      application,
+    })
+
+    const savedDocument = await this.applicationRepository.manager.save(document)
+
+    return { data: savedDocument }
   }
 }
