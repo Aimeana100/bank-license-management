@@ -60,3 +60,48 @@ Password for all accounts: `Password@123`
 cd backend
 npm test
 ```
+
+---
+
+## Running without Docker
+
+You need Node 20+ and a running PostgreSQL instance.
+
+### 1. Configure environment
+
+Copy `backend/.env.example` to `backend/.env` and fill in your local values:
+
+```env
+PORT=5000
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=your_pg_user
+DB_PASSWORD=your_pg_password
+DB_NAME=nbr_licensing
+
+JWT_SECRET=your_jwt_secret_here
+JWT_TOKEN_EXPIRES_IN=1d
+```
+
+### 2. Start the API
+
+```bash
+cd backend
+npm install
+npm run start:dev
+```
+
+The API will be available at `http://localhost:5000` and Swagger at `http://localhost:5000/docs`.
+
+### 3. Start the frontend
+
+In a separate terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`.
