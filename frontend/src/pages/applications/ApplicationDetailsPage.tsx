@@ -50,7 +50,7 @@ export function ApplicationDetailsPage() {
     user?.role === 'APPLICANT' ? 'My Application Details' : 'Application Review Details'
 
   const onAction = async (action: ApplicationStatus) => {
-    if (!application) return
+    if (!application || !user) return
     setError('')
     setSuccess('')
     setActing(true)
