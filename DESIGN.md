@@ -82,6 +82,14 @@ document_upload
   applicationId     → applications.id FK
   createdAt
 
+> **Document categories — business context**
+> Every uploaded file must be labelled under one of the four required document names above.
+> This ensures each file has a clear, reviewable purpose rather than being a nameless attachment.
+> The four categories are drawn from the licensing requirements published by the National Bank of Rwanda (BNR):
+> [BNR — Regulation establishing licensing requirements and other conditions for deposit-taking institutions](https://www.bnr.rw/documents/Regulation_establishing_licensing_requirements_and_other_conditions_for_deposi_NNeAQyu.pdf)
+>
+> _Future: category management will be handled through the admin dashboard, allowing categories to be configured without a code change._
+
 audit_logs
   id            uuid PK
   applicationId → applications.id FK NOT NULL
@@ -238,5 +246,6 @@ The same `pessimistic_write` lock is applied to document uploads to prevent dupl
 - **Refresh tokens** — Current implementation uses a single short-lived access token; a refresh token flow would improve security without forcing frequent re-login.
 - **Audit log API** — Expose audit history via a read-only endpoint so reviewers and approvers can inspect application history without direct DB access.
 - **Rate limiting** — Add per-IP or per-user rate limiting on auth endpoints to mitigate brute-force attacks.
-- **Api versioning** 
-- **User adiminstration and frontend pages separation**
+- **Api versioning**
+- **User adminstration and frontend pages separation**
+- **application document required dynamicity**
