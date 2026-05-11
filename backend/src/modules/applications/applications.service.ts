@@ -20,6 +20,7 @@ import { randomUUID, UUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import * as path from 'path'
 import { applicationStatusCanTransition } from './utils/application-state-machine'
+import { AuditService } from '../audit/audit.service'
 
 @Injectable()
 export class ApplicationsService {
@@ -28,9 +29,8 @@ export class ApplicationsService {
     private readonly applicationRepository: Repository<Application>,
     @Inject(REQUEST) private readonly request: AuthenticatedRequest,
     @InjectRepository(User) private readonly userRepository: Repository<User>,
-    @InjectRepository(DocumentUpload)
-    private readonly documentUploadRepository: Repository<DocumentUpload>,
     private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
   ) {}
 
   /**
@@ -95,27 +95,53 @@ export class ApplicationsService {
     applicationId: UUID,
     newStatus: ApplicationStatus,
   ) {
-    // Fetch the application from the database
-    const application = await this.applicationRepository.findOne({
-      where: { id: applicationId },
+    return this.dataSource.transaction(async (manager) => {
+      // Lock the row to prevent concurrent modifications
+      const application = await manager.findOne(Application, {
+        where: { id: applicationId },
+        lock: { mode: 'pessimistic_write' },
+      })
+
+      if (!application) {
+        throw new NotFoundException('Application not found')
+      }
+
+      // Validate transition AFTER locking
+      if (
+        !applicationStatusCanTransition(
+          application.applicationStatus,
+          newStatus,
+        )
+      ) {
+        throw new BadRequestException(
+          `Cannot change status from ${application.applicationStatus} to ${newStatus}`,
+        )
+      }
+
+      const actor = await manager.findOne(User, {
+        where: { id: this.request.user.id },
+      })
+      if (!actor) {
+        throw new NotFoundException('User not found')
+      }
+
+      const previousStatus = application.applicationStatus
+
+      application.applicationStatus = newStatus
+
+      const updatedApplication = await manager.save(application)
+
+       await this.auditService.logTransaction({
+        application: updatedApplication,
+        actor,
+        action: 'APPLICATION_STATUS_CHANGED',
+        beforeState: previousStatus,
+        afterState: newStatus,
+        manager,
+      })
+  
+      return updatedApplication
     })
-
-    if (!application) {
-      throw new NotFoundException('Application not found')
-    }
-
-    // Check if the status transition is valid
-    if (
-      !applicationStatusCanTransition(application.applicationStatus, newStatus)
-    ) {
-      throw new BadRequestException(
-        `Cannot change status from ${application.applicationStatus} to ${newStatus}`,
-      )
-    }
-
-    // Update the application status
-    application.applicationStatus = newStatus
-    return this.applicationRepository.save(application)
   }
 
   /**

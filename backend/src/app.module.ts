@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module'
 import { ApplicationsModule } from './modules/applications/applications.module'
 import { SeedersModule } from './seeders/seeders.module'
 import { DocumentsService } from './modules/applications/documents.service'
+import { AuditModule } from './modules/audit/audit.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { DocumentsService } from './modules/applications/documents.service'
     AuthModule,
     ApplicationsModule,
     SeedersModule,
+    AuditModule,
   ],
   providers: [AppService, DocumentsService],
 })

@@ -6,9 +6,13 @@ import { Application } from './entities/applications.entity'
 import { User } from '../users/entities/user.entity'
 import { JwtService } from '@nestjs/jwt'
 import { DocumentUpload } from './entities/documents-upload.entity'
+import { AuditModule } from '../audit/audit.module'
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Application, User, DocumentUpload])],
+  imports: [
+    TypeOrmModule.forFeature([Application, User, DocumentUpload]),
+    AuditModule,
+  ],
   controllers: [ApplicationsController],
   providers: [ApplicationsService, JwtService],
   exports: [ApplicationsService],

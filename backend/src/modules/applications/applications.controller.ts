@@ -12,6 +12,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   UseGuards,
   UseInterceptors,
@@ -27,6 +28,7 @@ import { UUID } from 'crypto'
 import { ReviewApplicationDto } from './dto/review-application.dto'
 import { ApproveApplicationDto } from './dto/approve-application.dto'
 import { UploadedRequiredFile } from '../../common/decorator/upload-required-file'
+import { ResubmitApplicationDto } from './dto/resubmit-application.dto'
 
 @Controller('applications')
 export class ApplicationsController {
@@ -85,10 +87,29 @@ export class ApplicationsController {
   @ApiResponse({ status: 400, description: 'Bad Request.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiOperation({ summary: 'Resubmit an application' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Patch('/:applicationId/resubmit')
+  @Roles(Role.APPLICANT)
+  reSubmit(
+    @Param('applicationId') applicationId: UUID,
+    @Body() resubmitApplicationDto: ResubmitApplicationDto,
+  ) {
+    return this.applicationsService.changeApplicationStatus(
+      applicationId,
+      resubmitApplicationDto.applicationStatus,
+    )
+  }
+
+  @ApiResponse({ status: 200, description: 'Application status updated.' })
+  @ApiResponse({ status: 400, description: 'Bad Request.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
   @ApiOperation({ summary: 'Review an application' })
   @UseGuards(AuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Post('/:applicationId/review')
+  @Patch('/:applicationId/review')
   @Roles(Role.REVIEWER)
   review(
     @Param('applicationId') applicationId: UUID,
@@ -107,7 +128,7 @@ export class ApplicationsController {
   @ApiOperation({ summary: 'Approve or reject an application' })
   @UseGuards(AuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Post('/:applicationId/approve')
+  @Patch('/:applicationId/approve')
   @Roles(Role.APPROVER)
   approve(
     @Param('applicationId', ParseUUIDPipe) applicationId: UUID,

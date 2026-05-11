@@ -32,7 +32,10 @@ export const typeOrmConfigAsync: TypeOrmModuleAsyncOptions = {
     password: configService.get<string>('DB_PASSWORD'),
     database: configService.get<string>('DB_NAME'),
     entities: [__dirname + '/../**/*.entity{.ts, .js}'],
+    migrations: [__dirname + '/../migrations/*{.ts, .js}'],
+    migrationsRun: true,
     autoLoadEntities: true,
+    dropSchema: false,
     synchronize: true, //debug purpose
   }),
 }
