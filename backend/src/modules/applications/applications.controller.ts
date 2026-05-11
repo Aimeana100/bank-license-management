@@ -28,7 +28,7 @@ import { UUID } from 'crypto'
 import { ReviewApplicationDto } from './dto/review-application.dto'
 import { ApproveApplicationDto } from './dto/approve-application.dto'
 import { UploadedRequiredFile } from '../../common/decorator/upload-required-file'
-import { ResubmitApplicationDto } from './dto/resubmit-application.dto'
+import { SubmitApplicationDto } from './dto/resubmit-application.dto'
 
 @Controller('applications')
 export class ApplicationsController {
@@ -62,6 +62,19 @@ export class ApplicationsController {
     return this.applicationsService.findAll()
   }
 
+  @ApiResponse({ status: 200, description: 'Application details retrieved.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 404, description: 'Application not found.' })
+  @ApiOperation({ summary: 'Retrieve one application by ID' })
+  @UseGuards(AuthGuard, RolesGuard)
+  @ApiBearerAuth()
+  @Get('/:applicationId')
+  @Roles(Role.APPLICANT, Role.REVIEWER, Role.APPROVER, Role.ADMIN)
+  findOne(@Param('applicationId', ParseUUIDPipe) applicationId: string) {
+    return this.applicationsService.findOne(applicationId)
+  }
+
   @ApiOperation({ summary: 'Upload a document for an application' })
   @ApiResponse({ status: 201, description: 'Document uploaded.' })
   @ApiConsumes('multipart/form-data')
@@ -87,18 +100,18 @@ export class ApplicationsController {
   @ApiResponse({ status: 400, description: 'Bad Request.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   @ApiResponse({ status: 403, description: 'Forbidden.' })
-  @ApiOperation({ summary: 'Resubmit an application' })
+  @ApiOperation({ summary: 'Submit or resubmit an application' })
   @UseGuards(AuthGuard, RolesGuard)
   @ApiBearerAuth()
-  @Patch('/:applicationId/resubmit')
+  @Patch('/:applicationId/submit')
   @Roles(Role.APPLICANT)
-  reSubmit(
+  submit(
     @Param('applicationId') applicationId: UUID,
-    @Body() resubmitApplicationDto: ResubmitApplicationDto,
+    @Body() dto: SubmitApplicationDto,
   ) {
     return this.applicationsService.changeApplicationStatus(
       applicationId,
-      resubmitApplicationDto.applicationStatus,
+      dto.applicationStatus,
     )
   }
 

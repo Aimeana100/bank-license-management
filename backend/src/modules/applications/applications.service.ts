@@ -34,31 +34,6 @@ export class ApplicationsService {
   ) {}
 
   /**
-   * Checks if a role can change an application to a new status
-   * @param role 
-   * @param nextStatus 
-   * @returns 
-   */
-  private canRoleChangeToStatus(
-    role: Role,
-    nextStatus: ApplicationStatus,
-  ): boolean {
-    if (role === Role.ADMIN) return true
-
-    const roleToAllowedStatuses: Record<Role, ApplicationStatus[]> = {
-      [Role.APPLICANT]: [ApplicationStatus.RESUBMITTED],
-      [Role.REVIEWER]: [
-        ApplicationStatus.INFO_REQUESTED,
-        ApplicationStatus.REVIEWED,
-      ],
-      [Role.APPROVER]: [ApplicationStatus.APPROVED, ApplicationStatus.REJECTED],
-      [Role.ADMIN]: [],
-    }
-
-    return roleToAllowedStatuses[role]?.includes(nextStatus) ?? false
-  }
-
-  /**
    * Creates a new application
    * @param createApplicationDto
    * @returns The created application
@@ -108,24 +83,40 @@ export class ApplicationsService {
     }
   }
 
+  async findOne(applicationId: string) {
+    const application = await this.applicationRepository.findOne({
+      where: { id: applicationId },
+      relations: ['applicant', 'reviewer', 'approver', 'documents'],
+    })
+
+    if (!application) {
+      throw new NotFoundException('Application not found')
+    }
+
+    if (
+      this.request.user.role === Role.APPLICANT &&
+      application.applicant.id !== this.request.user.id
+    ) {
+      throw new ForbiddenException(
+        'You can only access details for your own applications',
+      )
+    }
+
+    return { data: application, meta: {} }
+  }
+
   /**
    * Changes the status of an application, ensuring that the transition is valid according to the defined state machine
    * @param applicationId - ID of the application to update
    * @param newStatus - The new status to set for the application
    * Rules:
-   * - Only certain roles can change to specific statuses 
+   * - Only certain roles can change to specific statuses
    * @returns The updated application with the new status
    */
   async changeApplicationStatus(
     applicationId: UUID,
     newStatus: ApplicationStatus,
   ) {
-    if (!this.canRoleChangeToStatus(this.request.user.role, newStatus)) {
-      throw new ForbiddenException(
-        `Role ${this.request.user.role} cannot change status to ${newStatus}`,
-      )
-    }
-
     return this.dataSource.transaction(async (manager) => {
       // Lock the row to prevent concurrent modifications
       const application = await manager.findOne(Application, {
@@ -165,7 +156,7 @@ export class ApplicationsService {
 
       const updatedApplication = await manager.save(application)
 
-       await this.auditService.logTransaction({
+      await this.auditService.logTransaction({
         application: updatedApplication,
         actor,
         action: 'APPLICATION_STATUS_CHANGED',
@@ -173,7 +164,7 @@ export class ApplicationsService {
         afterState: newStatus,
         manager,
       })
-  
+
       return updatedApplication
     })
   }

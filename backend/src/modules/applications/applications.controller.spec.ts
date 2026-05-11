@@ -16,6 +16,8 @@ describe('ApplicationsController', () => {
           useValue: {
             create: jest.fn(),
             findAll: jest.fn(),
+            findOne: jest.fn(),
+            submit: jest.fn(),
             uploadDocument: jest.fn(),
             changeApplicationStatus: jest.fn(),
           },

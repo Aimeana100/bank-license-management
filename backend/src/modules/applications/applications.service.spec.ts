@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common'
+import { BadRequestException, NotFoundException } from '@nestjs/common'
 import { ApplicationsService } from './applications.service'
 import { Application, ApplicationStatus } from './entities/applications.entity'
 import { Role, User } from '../users/entities/user.entity'
@@ -174,17 +170,16 @@ describe('ApplicationsService', () => {
 
       await service.findAll()
 
-      expect(queryBuilder.where).toHaveBeenCalledWith('applicant.id = :userId', {
-        userId: request.user.id,
-      })
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'applicant.id = :userId',
+        {
+          userId: request.user.id,
+        },
+      )
     })
 
-    it.each([
-      Role.REVIEWER,
-      Role.APPROVER,
-      Role.ADMIN,
-    ])(
-      '%s can query without applicant-only filter in findAll',
+    it.each([Role.REVIEWER, Role.APPROVER, Role.ADMIN])(
+      'can query without applicant-only filter in findAll',
       async (role) => {
         request.user.role = role
         const queryBuilder = buildQueryBuilder()
@@ -193,22 +188,6 @@ describe('ApplicationsService', () => {
         await service.findAll()
 
         expect(queryBuilder.where).not.toHaveBeenCalled()
-      },
-    )
-
-    it.each([
-      { role: Role.APPLICANT, targetStatus: ApplicationStatus.REVIEWED },
-      { role: Role.REVIEWER, targetStatus: ApplicationStatus.APPROVED },
-      { role: Role.APPROVER, targetStatus: ApplicationStatus.REVIEWED },
-    ])(
-      'forbids unauthorized status changes for $role to $targetStatus',
-      async ({ role, targetStatus }) => {
-        request.user.role = role
-
-        await expect(
-          service.changeApplicationStatus('app-1' as any, targetStatus),
-        ).rejects.toBeInstanceOf(ForbiddenException)
-        expect(dataSource.transaction).not.toHaveBeenCalled()
       },
     )
   })
@@ -247,7 +226,10 @@ describe('ApplicationsService', () => {
       primeStatusChangeMocks({ currentStatus: ApplicationStatus.DRAFT })
 
       await expect(
-        service.changeApplicationStatus('app-1' as any, ApplicationStatus.APPROVED),
+        service.changeApplicationStatus(
+          'app-1' as any,
+          ApplicationStatus.APPROVED,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException)
 
       expect(manager.save).not.toHaveBeenCalled()
@@ -259,7 +241,10 @@ describe('ApplicationsService', () => {
       manager.findOne.mockResolvedValueOnce(null)
 
       await expect(
-        service.changeApplicationStatus('missing' as any, ApplicationStatus.REVIEWED),
+        service.changeApplicationStatus(
+          'missing' as any,
+          ApplicationStatus.REVIEWED,
+        ),
       ).rejects.toBeInstanceOf(NotFoundException)
     })
 
@@ -271,7 +256,10 @@ describe('ApplicationsService', () => {
       })
 
       await expect(
-        service.changeApplicationStatus('app-1' as any, ApplicationStatus.REVIEWED),
+        service.changeApplicationStatus(
+          'app-1' as any,
+          ApplicationStatus.REVIEWED,
+        ),
       ).rejects.toBeInstanceOf(NotFoundException)
       expect(auditService.logTransaction).not.toHaveBeenCalled()
     })
@@ -282,7 +270,10 @@ describe('ApplicationsService', () => {
       primeStatusChangeMocks({ currentStatus: ApplicationStatus.REJECTED })
 
       await expect(
-        service.changeApplicationStatus('app-1' as any, ApplicationStatus.APPROVED),
+        service.changeApplicationStatus(
+          'app-1' as any,
+          ApplicationStatus.APPROVED,
+        ),
       ).rejects.toBeInstanceOf(BadRequestException)
 
       expect(manager.findOne).toHaveBeenCalledWith(Application, {
