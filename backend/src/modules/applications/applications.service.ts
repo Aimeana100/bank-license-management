@@ -34,6 +34,31 @@ export class ApplicationsService {
   ) {}
 
   /**
+   * Checks if a role can change an application to a new status
+   * @param role 
+   * @param nextStatus 
+   * @returns 
+   */
+  private canRoleChangeToStatus(
+    role: Role,
+    nextStatus: ApplicationStatus,
+  ): boolean {
+    if (role === Role.ADMIN) return true
+
+    const roleToAllowedStatuses: Record<Role, ApplicationStatus[]> = {
+      [Role.APPLICANT]: [ApplicationStatus.RESUBMITTED],
+      [Role.REVIEWER]: [
+        ApplicationStatus.INFO_REQUESTED,
+        ApplicationStatus.REVIEWED,
+      ],
+      [Role.APPROVER]: [ApplicationStatus.APPROVED, ApplicationStatus.REJECTED],
+      [Role.ADMIN]: [],
+    }
+
+    return roleToAllowedStatuses[role]?.includes(nextStatus) ?? false
+  }
+
+  /**
    * Creates a new application
    * @param createApplicationDto
    * @returns The created application
@@ -87,14 +112,20 @@ export class ApplicationsService {
    * Changes the status of an application, ensuring that the transition is valid according to the defined state machine
    * @param applicationId - ID of the application to update
    * @param newStatus - The new status to set for the application
+   * Rules:
+   * - Only certain roles can change to specific statuses 
    * @returns The updated application with the new status
-   * @throws NotFoundException if the application does not exist
-   * @throws ForbiddenException if the status transition is not allowed
    */
   async changeApplicationStatus(
     applicationId: UUID,
     newStatus: ApplicationStatus,
   ) {
+    if (!this.canRoleChangeToStatus(this.request.user.role, newStatus)) {
+      throw new ForbiddenException(
+        `Role ${this.request.user.role} cannot change status to ${newStatus}`,
+      )
+    }
+
     return this.dataSource.transaction(async (manager) => {
       // Lock the row to prevent concurrent modifications
       const application = await manager.findOne(Application, {
@@ -121,6 +152,9 @@ export class ApplicationsService {
       const actor = await manager.findOne(User, {
         where: { id: this.request.user.id },
       })
+      if (!actor) {
+        throw new NotFoundException('User not found')
+      }
       if (!actor) {
         throw new NotFoundException('User not found')
       }
