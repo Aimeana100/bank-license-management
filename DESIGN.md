@@ -1,47 +1,58 @@
 # Design Document — Bank Licensing & Compliance Portal
 
-## 1. Architecture
+## 1. Architecture Overview
 
-The system follows a 3-tier architecture in a client-server deployment.
-
-```
-┌──────────────────────────────┐
-│      Presentation Layer      │  React 19 · TypeScript · Vite
-│  Role-aware SPA (port 5173)  │  TailwindCSS · shadcn/ui · React Router v7
-└──────────────┬───────────────┘
-               │ HTTP / JSON (Axios)
-┌──────────────▼───────────────┐
-│      Application Layer       │  NestJS 11 (port 3000)
-│  REST API + Auth + Workflow  │  JWT · Role Guards · State Machine
-│                              │  Multer · Audit Service · Swagger
-└──────────────┬───────────────┘
-               │ TypeORM (pessimistic locking)
-┌──────────────▼───────────────┐
-│         Data Layer           │  PostgreSQL 16
-│  Relational DB + Local Files │  DB triggers · Local filesystem (uploads/)
-└──────────────────────────────┘
-```
-
-### Backend Module Structure
+The system is a three-tier, role-gated application built for the National Bank of Rwanda (BNR) to manage the full lifecycle of bank licensing applications — from initial submission through regulatory review to final approval or rejection.
 
 ```
-src/
-├── modules/
-│   ├── auth/            # JWT strategy, AuthGuard, RolesGuard, Roles decorator
-│   ├── users/           # User entity, CRUD, role management
-│   ├── applications/    # Core domain: create, review, approve, upload
-│   │   ├── entities/    # Application, DocumentUpload
-│   │   ├── dto/         # Input validation per action
-│   │   └── utils/       # application-state-machine.ts
-│   └── audit/           # AuditLog entity + append-only write service
-├── migrations/          # MakeAuditAppendOnly — DB-level trigger
-├── seeders/             # Startup seeders for users and applications
-└── config/              # Env validation, TypeORM config, Swagger config
+┌──────────────────────────────────┐
+│       Presentation Layer         │  React 19 · TypeScript · Vite
+│   Role-aware SPA  (port 5173)    │  TailwindCSS · shadcn/ui · React Router v7
+└──────────────┬───────────────────┘
+               │  HTTP/JSON  (Axios + Bearer token)
+┌──────────────▼───────────────────┐
+│       Application Layer          │  NestJS 11  (port 3000)
+│  REST API · Auth · Workflow      │  JWT · Guards · State Machine · Multer
+│  Audit · Role Enforcement        │  TypeORM · Swagger
+└──────────────┬───────────────────┘
+               │  TypeORM  (pessimistic locking)
+┌──────────────▼───────────────────┐
+│         Data Layer               │  PostgreSQL 16
+│  Relational DB + Local Storage   │  DB triggers · Local filesystem (uploads/)
+└──────────────────────────────────┘
 ```
+
+Each layer has a single job. The frontend never makes business decisions — it reflects state and sends intent. The API enforces every rule. The database is the last line of defence for data integrity.
 
 ---
 
-## 2. Data Model
+## 2. Technology Choices
+
+### Why NestJS over plain Express
+
+Express is minimal by design — it gives you an HTTP server and nothing else. That is a strength for small services, but a liability as a codebase grows. Every team ends up inventing their own conventions for dependency injection, module boundaries, configuration, and validation.
+
+NestJS provides those conventions out of the box. Its decorator-based module system (`@Module`, `@Injectable`, `@Controller`) enforces clear ownership of every concern. The built-in dependency injection container means that swapping an implementation — say, replacing the local file store with S3 — requires changing one provider registration, not hunting through function calls. For a compliance domain where auditability and role enforcement need to be airtight, having the framework push you toward explicit, testable structure matters more than saving boilerplate.
+
+Concretely: `AuthGuard`, `RolesGuard`, and the `@Roles()` decorator exist as first-class injectable providers with zero global state. Any controller route can be locked down in two lines. That would require manual middleware chaining in plain Express and would be far easier to misconfigure.
+
+### Why PostgreSQL over a document store
+
+An application moves through states, belongs to a user, has a reviewer, an approver, multiple versioned documents, and an immutable audit trail. All of these are relational by nature — they reference each other by identity, not by embedding.
+
+A document store like MongoDB would force manual join logic into the application layer, make referential integrity optional, and make it harder to enforce the append-only constraint on audit logs at the database level. PostgreSQL gives foreign keys, row-level locking, transactions, and triggers — all of which this system uses. The relational model is not a default choice here; it is the right choice for the data shape.
+
+### Why React over a server-rendered approach
+
+The portal is heavily role-aware: the same route renders entirely different actions depending on whether the logged-in user is an APPLICANT, REVIEWER, APPROVER, or ADMIN. Server rendering would push that conditional logic into templates. A React SPA keeps the role-aware rendering co-located with the API calls that drive it, and allows the UI to update without a full page reload after each status transition — important when a reviewer is working through a queue of applications.
+
+### Why JWT over session cookies
+
+JWT tokens are stateless. The API server holds no session state, which means every instance of the API can validate any token independently. This makes horizontal scaling trivial — no shared session store is needed. The trade-off is that a compromised token cannot be instantly revoked before it expires. For a licensing portal where sessions are short-lived and the threat model is not real-time token hijacking, statelessness wins. A refresh token flow would close this gap and is noted as a future improvement.
+
+---
+
+## 3. Data Model
 
 ```
 users
@@ -82,105 +93,81 @@ document_upload
   applicationId     → applications.id FK
   createdAt
 
-> **Document categories — business context**
-> Every uploaded file must be labelled under one of the four required document names above.
-> This ensures each file has a clear, reviewable purpose rather than being a nameless attachment.
-> The four categories are drawn from the licensing requirements published by the National Bank of Rwanda (BNR):
-> [BNR — Regulation establishing licensing requirements and other conditions for deposit-taking institutions](https://www.bnr.rw/documents/Regulation_establishing_licensing_requirements_and_other_conditions_for_deposi_NNeAQyu.pdf)
->
-> _Future: category management will be handled through the admin dashboard, allowing categories to be configured without a code change._
-
 audit_logs
   id            uuid PK
   applicationId → applications.id FK NOT NULL
   actorId       → users.id FK NOT NULL (eager loaded)
-  action        varchar  (e.g. APPLICATION_STATUS_CHANGED)
-  beforeState   varchar
-  afterState    varchar
+  action        varchar
+  beforeState   varchar (JSON)
+  afterState    varchar (JSON)
   createdAt
-  [UPDATE and DELETE blocked by PostgreSQL trigger — see §6]
+  [UPDATE and DELETE blocked by PostgreSQL trigger — see §5]
 ```
+
+**Document categories** are drawn directly from BNR licensing requirements. Every uploaded file must declare its purpose — this is not a generic attachment system. The four categories (Articles of Incorporation, Certificate of Registration, Financial Statements, Proof of Capital) map to the regulatory checklist that a reviewer works through.
 
 ---
 
-## 3. Workflow State Machine
+## 4. Workflow & Security Model
 
-Application lifecycle is modelled as an explicit allowlist of valid transitions. Any transition not in the map is rejected with `400 Bad Request` before any lock or DB write.
+### State machine
+
+The application lifecycle is an explicit allowlist. Any status transition not present in the map is rejected with `400 Bad Request` before any database write occurs.
 
 ```
               ┌────────┐
          ┌───►│ DRAFT  │
          │    └───┬────┘
-         │        │ applicant submits
+         │        │ submit
          │    ┌───▼──────────┐
          │    │  SUBMITTED   │◄──────────────────┐
          │    └──┬───────┬───┘                   │
-         │       │       │                       │
-         │ mark  │       │ request info          │ resubmit
-         │ reviewed      │                       │
-         │       │   ┌───▼──────────────┐        │
-         │   ┌───▼──┐│  INFO_REQUESTED  │        │
-         │   │REVIEW││                  ├────────┘
-         │   │  ED  │└──────────────────┘   (applicant resubmits)
-         │   └──┬───┘
+         │       │       │ request info          │ resubmit
+         │  mark │   ┌───▼──────────────┐        │
+         │ reviewed  │  INFO_REQUESTED  ├────────┘
+         │       │   └──────────────────┘
+         │   ┌───▼──────┐
+         │   │ REVIEWED │
+         │   └──┬───────┘
          │      │ approver decides
-         │      │
          │  ┌───▼──────┐   ┌──────────┐
          └──│ APPROVED │   │ REJECTED │
             └──────────┘   └──────────┘
-            (terminal)      (terminal)
 ```
 
-### Transition Table
-
-| From           | Allowed Next                     |
+| From           | Allowed transitions              |
 |----------------|----------------------------------|
 | DRAFT          | SUBMITTED                        |
 | SUBMITTED      | INFO_REQUESTED, REVIEWED         |
 | INFO_REQUESTED | RESUBMITTED                      |
 | RESUBMITTED    | INFO_REQUESTED, REVIEWED         |
 | REVIEWED       | APPROVED, REJECTED               |
-| APPROVED       | _(terminal — no exits)_          |
-| REJECTED       | _(terminal — no exits)_          |
+| APPROVED       | _(terminal)_                     |
+| REJECTED       | _(terminal)_                     |
 
-Implemented in [`backend/src/modules/applications/utils/application-state-machine.ts`](backend/src/modules/applications/utils/application-state-machine.ts).
+### Layered enforcement
 
----
+A single guard at the route level is not enough. A misconfigured decorator, a future refactor, or a new endpoint could silently open a gap. This system enforces role rules at three independent layers:
 
-### Enforcement Layers
+**Route layer** — `@Roles()` decorator + `RolesGuard` rejects requests before the handler runs. This is the first gate.
 
-**Route layer** — `@Roles(...)` decorator + `RolesGuard` rejects before the handler runs.
+**Service layer** — `canRoleChangeToStatus()` validates that the requesting role is allowed to make the specific transition requested, regardless of how the request arrived. This is the second gate and cannot be bypassed by route changes.
 
-**Service layer** — `canRoleChangeToStatus()` checks that the requesting role is permitted to move to the target status, independently of the route guard. This prevents any future route misconfig from being exploitable.
+**Query layer** — Applicants receive a `.where('applicant.id = :userId')` clause injected at query-build time. They cannot read other applicants' records even if both previous gates were bypassed.
 
-**Query layer** — Applicants get a `.where('applicant.id = :userId')` clause injected at query build time; they never receive other applicants' records even if the role check were bypassed.
-
-**Structural separation** — `reviewer` and `approver` are separate FK columns with separate role-gated endpoints (`PATCH /review`, `PATCH /approve`). A reviewer cannot act as approver on the same application by design.
-
-
-
-## 4. Non-Negotiable Requirement Mapping
-
-| Requirement                          | Implementation                                                                                    |
-|--------------------------------------|---------------------------------------------------------------------------------------------------|
-| JWT authentication                   | `AuthGuard` validates Bearer token on every protected route via `@nestjs/jwt`                    |
-| Role-based access control            | `@Roles()` + `RolesGuard` at route level; `canRoleChangeToStatus()` at service level            |
-| Invalid transitions rejected         | `applicationStatusCanTransition()` allowlist; returns `400` before any DB write                 |
-| Concurrent update safety             | `pessimistic_write` lock on the application row acquired inside the transaction before re-reading state |
-| Append-only audit log                | PostgreSQL `BEFORE UPDATE / DELETE` triggers raise an exception — no application code can bypass |
-| Audit atomicity                      | Audit write shares the same transaction as the status change; both commit or both roll back      |
-| Document upload restricted by state  | Upload handler checks `DRAFT` or `INFO_REQUESTED` before writing file or DB record              |
-| Document versioning                  | Version counter incremented per `(applicationId, documentCategory)` pair within a locked transaction |
-| File size limit (5 MB)               | Multer `limits.fileSize` enforced server-side before handler runs                                |
-| Reviewer ≠ Approver                  | Enforced structurally: separate endpoints, separate role guards                |
-| Graceful error responses             | NestJS exception filters return structured JSON with HTTP status codes                           |
-| Swagger documentation                | All routes decorated with `@ApiOperation`, `@ApiResponse`, `@ApiBearerAuth`                     |
+**Structural separation** — `reviewer` and `approver` are separate foreign key columns with separate role-gated endpoints (`PATCH /review`, `PATCH /approve`). A reviewer cannot act as approver on the same application by database design, not just by code convention.
 
 ---
 
-## 5. Audit Trail Design
+## 5. Audit Trail
 
-The `audit_logs` table is protected at the database level by two triggers installed via migration (`MakeAuditAppendOnly`):
+### The core problem
+
+An audit log only has value if it is tamper-proof. Application-level "append-only" is not enough — a bug, a compromised service account, or a direct database query could modify records. The only way to guarantee immutability is to enforce it below the application layer.
+
+### The solution: database triggers
+
+Two `BEFORE` triggers are installed via migration on the `audit_logs` table:
 
 ```sql
 CREATE OR REPLACE FUNCTION prevent_audit_modification()
@@ -191,60 +178,95 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER prevent_audit_update
-BEFORE UPDATE ON audit_logs FOR EACH ROW
-EXECUTE FUNCTION prevent_audit_modification();
+  BEFORE UPDATE ON audit_logs FOR EACH ROW
+  EXECUTE FUNCTION prevent_audit_modification();
 
 CREATE TRIGGER prevent_audit_delete
-BEFORE DELETE ON audit_logs FOR EACH ROW
-EXECUTE FUNCTION prevent_audit_modification();
+  BEFORE DELETE ON audit_logs FOR EACH ROW
+  EXECUTE FUNCTION prevent_audit_modification();
 ```
 
-The constraint holds even if application-level code is compromised. Any attempt to modify or delete an audit record raises a PostgreSQL exception regardless of the caller.
+Any `UPDATE` or `DELETE` on `audit_logs` — whether from application code, TypeORM, a migration script, or a direct `psql` session — raises a PostgreSQL exception and is rolled back. The application cannot bypass this even if it tries to.
 
-Each log entry records: `actor`, `action`, `beforeState`, `afterState`, `timestamp`, and is linked to both the application and the user who triggered the change.
+### Atomicity
+
+The audit write shares the same database transaction as the status change it records. Either both commit or both roll back. This means there is no window where a status has changed but no audit entry exists, and no audit entry for a change that never happened.
 
 ---
 
-## 6. Concurrency Design
+## 6. Concurrency
 
-Status changes follow a lock-then-validate pattern to prevent race conditions:
+### The problem pessimistic locking solves
+
+Without locking, two concurrent requests — say, two reviewers acting on the same application simultaneously — can both read `SUBMITTED`, both pass validation, and both attempt to write `REVIEWED`. The result is a race condition: duplicated transitions, inconsistent state, and an audit trail that no longer reflects reality.
+
+### Pessimistic vs optimistic locking
+
+**Optimistic locking** assumes conflicts are rare. Each row carries a version counter. At write time, the application checks that the version it read is still current. If another writer got there first, the version won't match and the write is retried or rejected. This approach maximises throughput because reads never block.
+
+**Pessimistic locking** assumes conflict must be prevented, not detected after the fact. The row is locked for the duration of the transaction using `SELECT … FOR UPDATE`. Any concurrent writer blocks at the lock acquisition until the first transaction commits.
+
+This system uses **pessimistic locking** for application status changes and document version increments. The reasoning: licensing decisions are low-frequency (a few hundred applications, not millions), high-stakes writes where a duplicate transition is a regulatory problem, not just a user experience issue. The latency cost of serialising writes on the same row is immaterial at this volume. Correctness is the non-negotiable requirement; throughput is not.
+
+The pattern for every status change:
 
 ```
 1. Begin transaction
-2. SELECT … FOR UPDATE (pessimistic_write)  ← blocks concurrent writers on same row
-3. Re-validate the state transition against the NOW-locked row
-4. Apply status change
-5. Write audit log entry within the same transaction
+2. SELECT … FOR UPDATE   ← block concurrent writers on this row
+3. Re-read and validate the current state against the transition map
+4. Apply the change
+5. Write audit entry in the same transaction
 6. Commit
 ```
-
-Without step 2, two concurrent requests could both read `SUBMITTED`, both pass validation, and both attempt to advance the state — producing duplicate transitions or invalid states. With the lock, the second request blocks at step 2, then fails step 3 after the first commits, and returns `400 Bad Request`.
-
-The same `pessimistic_write` lock is applied to document uploads to prevent duplicate version numbers under concurrent upload requests for the same category.
 
 ---
 
 ## 7. Trade-offs
 
-| Decision | Trade-off |
-|----------|-----------|
-| Local filesystem for uploads | Simple to run locally; not horizontally scalable. Production would replace with S3-compatible object storage. |
-| `synchronize: true` in TypeORM | Convenient for development and review; must be disabled in production to prevent unintended schema drift. |
-| Pessimistic locking | Serializes writes on the same application row, adding latency under contention. Acceptable here — licensing decisions are low-frequency, high-stakes writes where correctness outweighs throughput. |
-| No explicit `UNDER_REVIEW` state | `SUBMITTED` and `RESUBMITTED` are handled identically by reviewer logic. Avoids a redundant state at the cost of a slightly non-obvious transition map. |
-| Status mapping layer in service | Decouples internal workflow states from client vocabulary. Adds a translation step but lets the state machine and UI evolve independently. |
-| Startup seeders | Convenient for reviewers running the project; in production, user provisioning would go through an admin API with its own audit trail. |
+### Local filesystem vs object storage
+
+**Chosen:** Local filesystem with a static asset server.  
+**Alternative:** S3-compatible object storage (AWS S3, MinIO).
+
+The local approach means zero infrastructure dependencies beyond the database — the project runs with a single `docker compose up`. The cost is that it does not scale horizontally: two API instances would serve files from different disks. For the current single-instance deployment this is irrelevant. The abstraction boundary (a `DocumentsService` that handles file writes) is already in place, so swapping to S3 is an implementation change, not an architectural one.
+
+### TypeORM `synchronize: true` vs migrations
+
+**Chosen:** `synchronize: true` in development.  
+**Alternative:** migration-only schema management.
+
+`synchronize: true` drops and recreates columns automatically when entities change. This eliminates migration friction during development and makes the project easy to run for the first time. The risk — unintended schema changes in production — is real and well-understood. The configuration is environment-aware: turning this off for production is one config change. The append-only migration (`MakeAuditAppendOnly`) demonstrates the project is already using migrations for production-grade concerns.
+
+### Stateless JWT vs session-based authentication
+
+**Chosen:** Stateless JWT with a single access token.  
+**Alternative:** Session tokens stored server-side, or JWT with refresh tokens.
+
+Stateless tokens require no server-side session store, which makes the API horizontally scalable without coordination. The trade-off is that a token cannot be invalidated before it expires — if a token is stolen, the attacker has access until the expiry time. A refresh token flow (short-lived access token + long-lived refresh token with a server-side revocation list) would close this gap. For this portal's threat model — internal regulatory staff, not public consumer accounts — the current approach is acceptable. The auth module is isolated enough that adding refresh tokens is an additive change.
+
+### Fixed document categories vs dynamic configuration
+
+**Chosen:** Four hard-coded `DocumentCategory` enum values.  
+**Alternative:** A `document_categories` table managed through an admin interface.
+
+The four categories are drawn directly from BNR's published licensing regulation. They are not arbitrary — they are the regulatory checklist. Hard-coding them means the schema enforces the business rule, not just application code. The cost is that adding a fifth category requires a code change and migration. Given that BNR regulations change slowly and deliberately, this trade-off favours correctness over flexibility. Dynamic category management is the right next step once the regulatory requirements stabilise.
+
+### No `UNDER_REVIEW` state
+
+**Chosen:** `SUBMITTED` and `RESUBMITTED` serve as the "pending reviewer action" states.  
+**Alternative:** An explicit `UNDER_REVIEW` state set when a reviewer opens an application.
+
+An `UNDER_REVIEW` state would communicate to applicants that their submission has been picked up. The reason it was omitted: it requires reviewer assignment — knowing which reviewer "owns" an application — which is not in scope. Without assignment, `UNDER_REVIEW` would be meaningless because any reviewer could still act on any application. The state machine is deliberately minimal: it models decision points, not administrative housekeeping.
 
 ---
 
-## 8. Future Improvements
+## 8. What the system does not yet do (and why)
 
-- **Reviewer assignment** — Explicitly assign submitted applications to specific reviewers rather than exposing all submitted applications to every reviewer.
-- **Email / webhook notifications** — Notify applicants on status transitions (e.g. info requested, approved, rejected).
-- **Pagination** — Add cursor or offset pagination to `GET /applications` for large datasets.
-- **Refresh tokens** — Current implementation uses a single short-lived access token; a refresh token flow would improve security without forcing frequent re-login.
-- **Audit log API** — Expose audit history via a read-only endpoint so reviewers and approvers can inspect application history without direct DB access.
-- **Rate limiting** — Add per-IP or per-user rate limiting on auth endpoints to mitigate brute-force attacks.
-- **Api versioning**
-- **User adminstration and frontend pages separation**
-- **application document required dynamicity**
+| Gap | Why it matters | What's needed |
+|-----|---------------|---------------|
+| **Reviewer assignment** | Currently every reviewer sees every submitted application. Assigning applications to specific reviewers prevents duplicated work and enables workload tracking. | A `reviewerId` assignment step + queue management UI |
+| **Email notifications** | Applicants have no way to know their status changed without polling the portal. | A notification service wired into the status-change transaction |
+| **Pagination** | `GET /applications` returns all records. At scale, this becomes a performance and UX problem. | Cursor or offset pagination on the list endpoint |
+| **Refresh tokens** | A stolen access token grants access until expiry. | Short-lived access token + server-side revocable refresh token |
+| **Rate limiting** | The auth endpoints have no brute-force protection. | Per-IP rate limiting on `POST /auth/login` |
+| **API versioning** | Breaking changes to the API require coordinated frontend deploys. | `/v1/` prefix + versioning strategy |
