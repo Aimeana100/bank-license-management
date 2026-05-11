@@ -40,7 +40,7 @@ export function ApplicationDocuments({ documents }: Props) {
                   </p>
                   <a
                     className="text-xs font-semibold text-amber-950 underline"
-                    href={`/${file.filepath}`}
+                    href={`${import.meta.env.VITE_API_BASE_URL}/${file.filepath}`}
                     rel="noreferrer"
                     target="_blank"
                   >
