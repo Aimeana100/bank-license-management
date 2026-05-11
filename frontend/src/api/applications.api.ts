@@ -41,12 +41,20 @@ export async function createApplication(
   return unwrap(response.data)
 }
 
+const ROLE_ENDPOINT: Record<string, string> = {
+  APPLICANT: 'submit',
+  REVIEWER: 'review',
+  APPROVER: 'approve',
+}
+
 export async function transitionApplication(
   id: string,
+  role: string,
   payload: TransitionApplicationRequest,
 ): Promise<Application> {
+  const endpoint = ROLE_ENDPOINT[role] ?? 'submit'
   const response = await api.patch<Application | ApiResponse<Application>>(
-    `/applications/${id}/submit`,
+    `/applications/${id}/${endpoint}`,
     payload,
   )
   return unwrap(response.data)

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ApplicationDocuments } from './ApplicationDocuments'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getApplicationById, transitionApplication } from '../../api/applications.api'
 import { Alert, AlertDescription } from '../../components/ui/alert'
@@ -6,60 +7,8 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { useAuth } from '../../contexts/useAuth'
 import type { Application, ApplicationStatus } from '../../types/application'
+import { ACTION_LABELS, formatCurrency, formatDate, formatInstitutionType, getRoleActions, getRoleBadgeClass, getStatusBadgeClass } from '../../utils/application.util'
 
-function formatDate(value?: string) {
-  if (!value) return 'N/A'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-RW', { style: 'currency', currency: 'RWF', maximumFractionDigits: 0 }).format(amount)
-}
-
-function formatInstitutionType(type: string) {
-  return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-const ACTION_LABELS: Partial<Record<ApplicationStatus, string>> = {
-  SUBMITTED: 'Submit',
-  RESUBMITTED: 'Resubmit',
-  INFO_REQUESTED: 'Request Changes',
-  REVIEWED: 'Mark Reviewed',
-  APPROVED: 'Approve',
-  REJECTED: 'Reject',
-}
-
-function getRoleActions(role: string, status: ApplicationStatus): ApplicationStatus[] {
-  if (role === 'APPLICANT') {
-    if (status === 'INFO_REQUESTED') return ['RESUBMITTED']
-    return []
-  }
-  if (role === 'REVIEWER') {
-    return  ['INFO_REQUESTED', 'REVIEWED']
-  }
-  if (role === 'APPROVER') {
-    return  ['APPROVED', 'REJECTED']
-  }
-  return []
-}
-
-function getStatusBadgeClass(status: ApplicationStatus) {
-  if (status === 'APPROVED') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-  if (status === 'REJECTED') return 'bg-red-100 text-red-800 border-red-200'
-  if (status === 'SUBMITTED' || status === 'RESUBMITTED') return 'bg-blue-100 text-blue-800 border-blue-200'
-  if (status === 'REVIEWED') return 'bg-purple-100 text-purple-800 border-purple-200'
-  if (status === 'INFO_REQUESTED') return 'bg-amber-100 text-amber-800 border-amber-200'
-  return 'bg-gray-100 text-gray-700 border-gray-200'
-}
-
-function getRoleBadgeClass(role?: string) {
-  if (role === 'APPLICANT') return 'bg-blue-100 text-blue-800 border-blue-200'
-  if (role === 'REVIEWER') return 'bg-purple-100 text-purple-800 border-purple-200'
-  if (role === 'APPROVER') return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-  return 'bg-amber-100 text-amber-800 border-amber-200'
-}
 
 export function ApplicationDetailsPage() {
   const { id } = useParams<{ id: string }>()
@@ -106,7 +55,7 @@ export function ApplicationDetailsPage() {
     setSuccess('')
     setActing(true)
     try {
-      const updated = await transitionApplication(application.id, { applicationStatus: action })
+      const updated = await transitionApplication(application.id, user.role, { applicationStatus: action })
       setApplication(updated)
       setSuccess(`Action ${action} completed.`)
     } catch (err: any) {
@@ -116,16 +65,6 @@ export function ApplicationDetailsPage() {
     }
   }
 
-  const documentsByCategory = useMemo(() => {
-    const docs = application?.documents ?? []
-    const map = new Map<string, typeof docs>()
-    for (const doc of docs) {
-      const group = map.get(doc.documentCategory) ?? []
-      group.push(doc)
-      map.set(doc.documentCategory, group)
-    }
-    return Array.from(map.entries()).map(([category, files]) => ({ category, files }))
-  }, [application?.documents])
 
   return (
     <main className="min-h-screen p-5">
@@ -240,42 +179,7 @@ export function ApplicationDetailsPage() {
                   </div>
                 ) : null}
 
-                {/* Documents */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-amber-950">Files by category</h3>
-                  {documentsByCategory.length === 0 ? (
-                    <p className="text-sm text-amber-900/70">No files attached.</p>
-                  ) : (
-                    documentsByCategory.map(({ category, files }) => (
-                      <div className="rounded-lg border border-amber-200 p-3" key={category}>
-                        <p className="mb-2 text-sm font-semibold text-amber-950">
-                          {formatInstitutionType(category)}
-                        </p>
-                        <div className="space-y-2">
-                          {files.map((file) => (
-                            <div
-                              className="rounded-md border border-amber-100 bg-amber-50/40 px-3 py-2"
-                              key={file.id}
-                            >
-                              <p className="text-sm text-amber-950">{file.filename}</p>
-                              <p className="text-xs text-amber-900/70">
-                                Version {file.version} | Uploaded {formatDate(file.createdAt)}
-                              </p>
-                              <a
-                                className="text-xs font-semibold text-amber-950 underline"
-                                href={`/${file.filepath}`}
-                                rel="noreferrer"
-                                target="_blank"
-                              >
-                                View file
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <ApplicationDocuments documents={application.documents ?? []} />
               </div>
             ) : null}
           </CardContent>
