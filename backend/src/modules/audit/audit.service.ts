@@ -35,4 +35,19 @@ export class AuditService {
     })
     return auditLogRepository.save(auditLog)
   }
+
+  async findAll(): Promise<AuditLog[]> {
+    return this.dataSource.getRepository(AuditLog).find({
+      relations: { application: true, actor: true },
+      order: { createdAt: 'DESC' },
+    })
+  }
+
+  async findByApplication(applicationId: string): Promise<AuditLog[]> {
+    return this.dataSource.getRepository(AuditLog).find({
+      where: { application: { id: applicationId } },
+      relations: { actor: true },
+      order: { createdAt: 'DESC' },
+    })
+  }
 }

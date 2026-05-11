@@ -22,10 +22,13 @@ describe('ApplicationsController', () => {
             changeApplicationStatus: jest.fn(),
           },
         },
-        { provide: AuthGuard, useValue: { canActivate: jest.fn(() => true) } },
-        { provide: RolesGuard, useValue: { canActivate: jest.fn(() => true) } },
       ],
-    }).compile()
+    })
+      .overrideGuard(AuthGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .compile()
 
     controller = module.get<ApplicationsController>(ApplicationsController)
   })

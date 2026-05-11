@@ -239,7 +239,6 @@ The same `pessimistic_write` lock is applied to document uploads to prevent dupl
 
 ## 8. Future Improvements
 
-- **Object storage** — Replace local filesystem with S3-compatible storage; store only the object key in the DB.
 - **Reviewer assignment** — Explicitly assign submitted applications to specific reviewers rather than exposing all submitted applications to every reviewer.
 - **Email / webhook notifications** — Notify applicants on status transitions (e.g. info requested, approved, rejected).
 - **Pagination** — Add cursor or offset pagination to `GET /applications` for large datasets.

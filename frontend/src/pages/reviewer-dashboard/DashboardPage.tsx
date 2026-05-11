@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   createApplication,
   listApplications,
@@ -101,6 +101,14 @@ export function DashboardPage() {
             >
               {user?.role }
             </span>
+            {user?.role === 'ADMIN' ? (
+              <Link
+                className="mt-2 block w-full rounded-md border border-amber-200 px-3 py-2 text-center text-sm font-medium text-amber-800 transition-colors hover:bg-amber-50"
+                to="/admin/audit"
+              >
+                Audit Logs
+              </Link>
+            ) : null}
             <Button className="mt-2 w-full" variant="outline" onClick={logout}>
               Log out
             </Button>
